@@ -80,14 +80,45 @@ struct CameraPreviewView: UIViewRepresentable {
         private func captureSnapshot() {
             guard bounds.width > 0, bounds.height > 0 else { return }
             
-            let renderer = UIGraphicsImageRenderer(bounds: bounds)
-            let image = renderer.image { context in
-                layer.render(in: context.cgContext)
+            // Use explicit SRGB color space for the snapshot
+            let scale = UIScreen.main.scale
+            let width = Int(bounds.width * scale)
+            let height = Int(bounds.height * scale)
+            
+            print("[CameraPreviewView] Capturing snapshot: \(width)x\(height) @ scale \(scale)")
+            
+            // Create bitmap context with SRGB color space
+            guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
+                  let context = CGContext(
+                    data: nil,
+                    width: width,
+                    height: height,
+                    bitsPerComponent: 8,
+                    bytesPerRow: width * 4,
+                    space: colorSpace,
+                    bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                  ) else {
+                print("[CameraPreviewView] ❌ Failed to create CGContext")
+                return
             }
             
-            if let cgImage = image.cgImage {
-                coordinator?.updateSnapshot(cgImage)
+            // Scale context to match screen scale
+            context.scaleBy(x: scale, y: scale)
+            
+            // Render the layer into our context
+            layer.render(in: context)
+            
+            // Create CGImage from context
+            guard let cgImage = context.makeImage() else {
+                print("[CameraPreviewView] ❌ Failed to create CGImage")
+                return
             }
+            
+            print("[CameraPreviewView] ✅ Snapshot captured!")
+            print("[CameraPreviewView] colorSpace: \(cgImage.colorSpace?.name ?? "nil" as CFString)")
+            print("[CameraPreviewView] bitsPerPixel: \(cgImage.bitsPerPixel)")
+            
+            coordinator?.updateSnapshot(cgImage)
         }
         
         deinit {
