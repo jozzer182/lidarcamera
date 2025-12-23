@@ -6,20 +6,36 @@
 //
 
 import SwiftUI
+import Photos
 
 struct ContentView: View {
     @StateObject private var cameraManager = CameraManager()
+    @StateObject private var depthManager = ARDepthManager()
     @State private var isLensPanelExpanded = false
     @State private var selectedLens: Lens = .wide
+    @State private var bandStep: Float = 0.05 // 5cm default
+    @State private var showDepthError = false
+    
+    /// Whether we're in LiDAR mode (showing depth view)
+    private var isLiDARMode: Bool {
+        selectedLens == .lidar
+    }
     
     var body: some View {
         ZStack {
-            // Full-screen camera preview
-            CameraPreviewView(session: cameraManager.session)
-                .ignoresSafeArea()
+            // Preview layer (camera or depth based on mode)
+            if isLiDARMode {
+                // LiDAR depth visualization
+                DepthPreviewView(depthManager: depthManager)
+                    .ignoresSafeArea()
+            } else {
+                // Normal camera preview
+                CameraPreviewView(session: cameraManager.session)
+                    .ignoresSafeArea()
+            }
             
             // Permission denied overlay
-            if cameraManager.permissionDenied {
+            if cameraManager.permissionDenied && !isLiDARMode {
                 permissionDeniedView
             }
             
@@ -32,6 +48,18 @@ struct ContentView: View {
                             isLensPanelExpanded = false
                         }
                     }
+            }
+            
+            // Band slider (right side, only in LiDAR mode)
+            if isLiDARMode && !isLensPanelExpanded {
+                HStack {
+                    Spacer()
+                    BandSlider(value: $bandStep)
+                        .padding(.trailing, 16)
+                        .onChange(of: bandStep) { _, newValue in
+                            depthManager.bandStep = newValue
+                        }
+                }
             }
             
             // Main UI overlay
@@ -81,9 +109,98 @@ struct ContentView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: cameraManager.showToast)
             }
+            
+            // Depth error toast
+            if showDepthError {
+                VStack {
+                    Spacer()
+                    ToastView(message: depthManager.errorMessage ?? "LiDAR depth not available")
+                        .padding(.bottom, 150)
+                }
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
         }
         .onAppear {
             cameraManager.checkPermissions()
+            depthManager.checkDepthSupport()
+        }
+        .onChange(of: selectedLens) { oldValue, newValue in
+            handleLensChange(from: oldValue, to: newValue)
+        }
+    }
+    
+    // MARK: - Mode Switching
+    
+    private func handleLensChange(from oldLens: Lens, to newLens: Lens) {
+        let wasLiDAR = oldLens == .lidar
+        let isNowLiDAR = newLens == .lidar
+        
+        if isNowLiDAR && !wasLiDAR {
+            // Switching TO LiDAR mode
+            cameraManager.pauseSession()
+            
+            if depthManager.isDepthSupported {
+                depthManager.bandStep = bandStep
+                depthManager.startSession()
+            } else {
+                showDepthError = true
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                    showDepthError = false
+                    // Revert to previous lens
+                    withAnimation {
+                        selectedLens = oldLens
+                    }
+                }
+            }
+        } else if !isNowLiDAR && wasLiDAR {
+            // Switching FROM LiDAR mode to camera
+            depthManager.pauseSession()
+            cameraManager.resumeSession()
+            cameraManager.switchLens(to: newLens)
+        } else if !isNowLiDAR {
+            // Normal lens switch (camera modes)
+            cameraManager.switchLens(to: newLens)
+        }
+    }
+    
+    // MARK: - Capture
+    
+    private func performCapture() {
+        if isLiDARMode {
+            // Capture depth snapshot
+            captureDepthSnapshot()
+        } else {
+            // Normal photo capture
+            cameraManager.capturePhoto()
+        }
+    }
+    
+    private func captureDepthSnapshot() {
+        guard let image = depthManager.captureDepthSnapshot() else {
+            cameraManager.showToastMessage("Failed to capture depth image")
+            return
+        }
+        
+        // Save to Photos
+        PHPhotoLibrary.requestAuthorization(for: .addOnly) { status in
+            guard status == .authorized else {
+                Task { @MainActor in
+                    cameraManager.showToastMessage("Photos permission denied")
+                }
+                return
+            }
+            
+            PHPhotoLibrary.shared().performChanges {
+                PHAssetCreationRequest.creationRequestForAsset(from: image)
+            } completionHandler: { success, error in
+                Task { @MainActor in
+                    if success {
+                        cameraManager.showToastMessage("Depth image saved")
+                    } else {
+                        cameraManager.showToastMessage("Failed to save: \(error?.localizedDescription ?? "Unknown error")")
+                    }
+                }
+            }
         }
     }
     
@@ -114,16 +231,25 @@ struct ContentView: View {
     
     private var captureButton: some View {
         Button {
-            cameraManager.capturePhoto()
+            performCapture()
         } label: {
             ZStack {
                 Circle()
-                    .fill(.white)
+                    .fill(isLiDARMode ? Color.blue : .white)
                     .frame(width: 72, height: 72)
                 
                 Circle()
-                    .stroke(.white.opacity(0.5), lineWidth: 4)
+                    .stroke(isLiDARMode ? Color.blue.opacity(0.5) : .white.opacity(0.5), lineWidth: 4)
                     .frame(width: 82, height: 82)
+                
+                // Show depth icon in LiDAR mode
+                if isLiDARMode {
+                    Image("LaserBeam")
+                        .resizable()
+                        .renderingMode(.template)
+                        .frame(width: 28, height: 28)
+                        .foregroundStyle(.white)
+                }
             }
         }
         .shadow(color: .black.opacity(0.3), radius: 10, x: 0, y: 5)
@@ -311,33 +437,12 @@ struct ContentView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 selectedLens = lens
             }
-            cameraManager.switchLens(to: lens)
         } label: {
             ZStack {
                 // Outer ring (thick) - outermost
                 Circle()
                     .stroke(.white.opacity(0.75), lineWidth: radius * 0.15)
                     .frame(width: diameter, height: diameter)
-                
-                // Second ring (thinner, with gap)
-                // Circle()
-                //     .stroke(.white.opacity(0.55), lineWidth: radius * 0.08)
-                //     .frame(width: diameter * 0.72, height: diameter * 0.72)
-                
-                // // Third ring (inner)
-                // Circle()
-                //     .stroke(.white.opacity(0.45), lineWidth: radius * 0.06)
-                //     .frame(width: diameter * 0.48, height: diameter * 0.48)
-                
-                // // Innermost ring
-                // Circle()
-                //     .stroke(.white.opacity(0.35), lineWidth: radius * 0.04)
-                //     .frame(width: diameter * 0.28, height: diameter * 0.28)
-                
-                // // Tiny center circle
-                // Circle()
-                //     .fill(.white.opacity(0.4))
-                //     .frame(width: diameter * 0.12, height: diameter * 0.12)
                 
                 // Lens label
                 Text(lens.label)
@@ -384,22 +489,22 @@ struct ContentView: View {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.7)) {
                 selectedLens = .lidar
             }
-            cameraManager.switchLens(to: .lidar)
         } label: {
             ZStack {
-                // Solid filled circle (radius ~17px)
+                // Outlined circle
                 Circle()
                     .stroke(
-                        cameraManager.flashEnabled ? Color.yellow : .white.opacity(0.6),
+                        isSelected ? Color.blue : .white.opacity(0.6),
                         lineWidth: 2
                     )
-                    .frame(width: 36, height: 36)                
+                    .frame(width: 36, height: 36)
+                
                 // Laser/LiDAR icon
                 Image("LaserBeam")
                     .resizable()
                     .renderingMode(.template)
                     .frame(width: 18, height: 18)
-                    .foregroundStyle(.white)
+                    .foregroundStyle(isSelected ? .blue : .white)
                 
                 // Selection ring
                 if isSelected {

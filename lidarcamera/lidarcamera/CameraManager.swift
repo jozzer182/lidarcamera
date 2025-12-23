@@ -91,6 +91,40 @@ class CameraManager: NSObject, ObservableObject {
         }
     }
     
+    // MARK: - Session Control (for mode switching)
+    
+    /// Pause camera session (when switching to LiDAR mode)
+    func pauseSession() {
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+            // Turn off torch if on
+            if let device = self.currentDeviceInput?.device,
+               device.hasTorch && device.torchMode == .on {
+                do {
+                    try device.lockForConfiguration()
+                    device.torchMode = .off
+                    device.unlockForConfiguration()
+                } catch {
+                    print("Error turning off torch: \(error)")
+                }
+            }
+        }
+        flashEnabled = false
+    }
+    
+    /// Resume camera session (when switching back from LiDAR mode)
+    func resumeSession() {
+        sessionQueue.async { [weak self] in
+            guard let self = self else { return }
+            if !self.session.isRunning {
+                self.session.startRunning()
+            }
+        }
+    }
+    
     // MARK: - Device Discovery
     
     private func getDevice(for lens: Lens) -> AVCaptureDevice? {
@@ -204,7 +238,7 @@ class CameraManager: NSObject, ObservableObject {
     
     // MARK: - Toast Helper
     
-    private func showToastMessage(_ message: String) {
+    func showToastMessage(_ message: String) {
         Task { @MainActor in
             self.toastMessage = message
             self.showToast = true
