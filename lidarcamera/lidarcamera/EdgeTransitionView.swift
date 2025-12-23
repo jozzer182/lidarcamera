@@ -3,17 +3,22 @@ import CoreImage
 import CoreImage.CIFilterBuiltins
 
 /// Animated edge detection transition view - image progressively degrades to show only edges
-/// Uses explicit Timer for animation since SwiftUI animation doesn't work with CoreImage rendering
 struct EdgeTransitionView: View {
     let sourceImage: CGImage
     let duration: TimeInterval = 1.5
     
-    @State private var phase: CGFloat = 0.0 // 0 = original, 1 = edges only
+    @State private var phase: CGFloat = 0.0
     @State private var opacity: Double = 1.0
     @State private var scanLineY: CGFloat = 0.0
     @State private var currentImage: CGImage?
     @State private var animationTimer: Timer?
     @State private var startTime: Date?
+    @State private var frameCount: Int = 0
+    
+    // Pre-computed images for performance
+    @State private var originalImage: CGImage?
+    @State private var grayImage: CGImage?
+    @State private var edgeImage: CGImage?
     
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     
@@ -24,13 +29,17 @@ struct EdgeTransitionView: View {
                 Color.black
                     .ignoresSafeArea()
                 
-                // Rendered image (updated by timer)
-                if let displayImage = currentImage {
+                // Rendered image
+                if let displayImage = currentImage ?? originalImage ?? sourceImage as CGImage? {
                     Image(decorative: displayImage, scale: 1.0, orientation: .up)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
+                } else {
+                    // Fallback - should never happen
+                    Text("No image")
+                        .foregroundStyle(.red)
                 }
                 
                 // Scanning line
@@ -69,28 +78,63 @@ struct EdgeTransitionView: View {
         }
         .ignoresSafeArea()
         .onAppear {
-            print("[EdgeTransition] onAppear - starting animation")
+            print("[EdgeTransition] onAppear - source image: \(sourceImage.width)x\(sourceImage.height)")
+            prepareImages()
             startAnimations()
         }
         .onDisappear {
-            print("[EdgeTransition] onDisappear - stopping timer")
+            print("[EdgeTransition] onDisappear")
             animationTimer?.invalidate()
             animationTimer = nil
+        }
+    }
+    
+    // MARK: - Pre-compute Images
+    
+    private func prepareImages() {
+        print("[EdgeTransition] prepareImages() - pre-computing gray and edge versions...")
+        
+        // Keep original
+        originalImage = sourceImage
+        currentImage = sourceImage
+        
+        let ciImage = CIImage(cgImage: sourceImage)
+        
+        // Pre-compute grayscale
+        if let grayFilter = CIFilter(name: "CIPhotoEffectMono") {
+            grayFilter.setValue(ciImage, forKey: kCIInputImageKey)
+            if let output = grayFilter.outputImage,
+               let cgGray = ciContext.createCGImage(output, from: output.extent) {
+                grayImage = cgGray
+                print("[EdgeTransition] Gray image created: \(cgGray.width)x\(cgGray.height)")
+            } else {
+                print("[EdgeTransition] ERROR: Failed to create gray image")
+            }
+        }
+        
+        // Pre-compute edges
+        if let grayCI = grayImage.map({ CIImage(cgImage: $0) }),
+           let edgeFilter = CIFilter(name: "CIEdges") {
+            edgeFilter.setValue(grayCI, forKey: kCIInputImageKey)
+            edgeFilter.setValue(5.0, forKey: kCIInputIntensityKey)
+            if let output = edgeFilter.outputImage,
+               let cgEdge = ciContext.createCGImage(output, from: output.extent) {
+                edgeImage = cgEdge
+                print("[EdgeTransition] Edge image created: \(cgEdge.width)x\(cgEdge.height)")
+            } else {
+                print("[EdgeTransition] ERROR: Failed to create edge image")
+            }
         }
     }
     
     // MARK: - Animation
     
     private func startAnimations() {
-        print("[EdgeTransition] startAnimations() called")
-        
-        // Set initial image
-        currentImage = sourceImage
+        print("[EdgeTransition] startAnimations()")
         startTime = Date()
         
-        // Create timer for phase animation (30 fps)
-        print("[EdgeTransition] Creating animation timer at 30fps")
-        animationTimer = Timer.scheduledTimer(withTimeInterval: 1/30.0, repeats: true) { _ in
+        // Timer at 15fps (less CPU intensive)
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1/15.0, repeats: true) { _ in
             updatePhase()
         }
         
@@ -99,7 +143,7 @@ struct EdgeTransitionView: View {
             scanLineY = 1.0
         }
         
-        // Fade out at the end
+        // Fade out at end
         DispatchQueue.main.asyncAfter(deadline: .now() + duration * 0.85) {
             print("[EdgeTransition] Starting fade out")
             withAnimation(.easeOut(duration: duration * 0.15)) {
@@ -113,93 +157,62 @@ struct EdgeTransitionView: View {
         
         let elapsed = Date().timeIntervalSince(start)
         let newPhase = min(elapsed / duration, 1.0)
+        frameCount += 1
         
-        // Log every ~0.25 seconds
-        if Int(elapsed * 4) != Int((elapsed - 1/30.0) * 4) {
-            print("[EdgeTransition] Phase update: \(String(format: "%.2f", newPhase)) (elapsed: \(String(format: "%.2f", elapsed))s)")
+        // Log periodically
+        if frameCount % 8 == 0 { // Every ~0.5 seconds
+            print("[EdgeTransition] Frame \(frameCount): phase=\(String(format: "%.2f", newPhase))")
         }
         
         phase = newPhase
         
-        // Render new image
-        if let rendered = renderProgressiveEdge(phase: phase) {
-            currentImage = rendered
-        }
+        // Simple cross-fade between pre-computed images
+        updateCurrentImage(phase: newPhase)
         
-        // Stop timer when complete
         if newPhase >= 1.0 {
-            print("[EdgeTransition] Animation complete, stopping timer")
+            print("[EdgeTransition] Animation complete at frame \(frameCount)")
             animationTimer?.invalidate()
             animationTimer = nil
         }
     }
     
-    // MARK: - Progressive Edge Rendering
+    private func updateCurrentImage(phase: CGFloat) {
+        // Simple 3-stage transition using pre-computed images
+        // 0.0-0.3: original
+        // 0.3-0.6: grayscale  
+        // 0.6-1.0: edges
+        
+        if phase < 0.3 {
+            // Show original (maybe slightly darkened)
+            if let img = blendImages(originalImage, grayImage, blend: phase / 0.3) {
+                currentImage = img
+            }
+        } else if phase < 0.6 {
+            // Transition from gray to edges
+            if let img = blendImages(grayImage, edgeImage, blend: (phase - 0.3) / 0.3) {
+                currentImage = img
+            }
+        } else {
+            // Show edges
+            currentImage = edgeImage
+        }
+    }
     
-    /// Render image with progressive edge detection based on phase (0 = original, 1 = edges only)
-    private func renderProgressiveEdge(phase: CGFloat) -> CGImage? {
-        let ciImage = CIImage(cgImage: sourceImage)
-        let clampedPhase = max(0, min(1, phase))
-        
-        // Step 1: Create grayscale version
-        guard let grayFilter = CIFilter(name: "CIPhotoEffectMono") else { 
-            print("[EdgeTransition] ERROR: CIPhotoEffectMono filter failed")
-            return nil 
-        }
-        grayFilter.setValue(ciImage, forKey: kCIInputImageKey)
-        guard let grayImage = grayFilter.outputImage else { return nil }
-        
-        // Step 2: Create edge detection
-        guard let edgeFilter = CIFilter(name: "CIEdges") else { 
-            print("[EdgeTransition] ERROR: CIEdges filter failed")
-            return nil 
-        }
-        edgeFilter.setValue(grayImage, forKey: kCIInputImageKey)
-        edgeFilter.setValue(8.0, forKey: kCIInputIntensityKey) // Strong edges
-        guard let edgeImage = edgeFilter.outputImage else { return nil }
-        
-        // Step 3: Blend based on phase
-        // phase 0-0.3: darken original to grayscale
-        // phase 0.3-1.0: fade grayscale to edges
-        
-        let darkPhase = min(clampedPhase / 0.3, 1.0)
-        let edgePhase = max(0, (clampedPhase - 0.3) / 0.7)
-        
-        // Darken the original
-        guard let darkenFilter = CIFilter(name: "CIExposureAdjust") else { return nil }
-        darkenFilter.setValue(ciImage, forKey: kCIInputImageKey)
-        darkenFilter.setValue(-Float(darkPhase) * 1.5, forKey: kCIInputEVKey)
-        guard let darkenedOriginal = darkenFilter.outputImage else { return nil }
-        
-        // Blend original with grayscale
-        guard let blendToGray = CIFilter(name: "CIDissolveTransition") else { return nil }
-        blendToGray.setValue(darkenedOriginal, forKey: kCIInputImageKey)
-        blendToGray.setValue(grayImage, forKey: kCIInputTargetImageKey)
-        blendToGray.setValue(Float(darkPhase), forKey: kCIInputTimeKey)
-        guard let grayBlended = blendToGray.outputImage else { return nil }
-        
-        // Blend grayscale with edges
-        guard let blendToEdge = CIFilter(name: "CIDissolveTransition") else { return nil }
-        blendToEdge.setValue(grayBlended, forKey: kCIInputImageKey)
-        blendToEdge.setValue(edgeImage, forKey: kCIInputTargetImageKey)
-        blendToEdge.setValue(Float(edgePhase), forKey: kCIInputTimeKey)
-        guard let edgeBlended = blendToEdge.outputImage else { return nil }
-        
-        // Add cyan tint in later phases
-        let tintAmount = max(0, edgePhase - 0.3) / 0.7
-        guard let colorMatrix = CIFilter(name: "CIColorMatrix") else { return nil }
-        colorMatrix.setValue(edgeBlended, forKey: kCIInputImageKey)
-        
-        let r = 1.0 - Float(tintAmount) * 0.5
-        colorMatrix.setValue(CIVector(x: CGFloat(r), y: 0, z: 0, w: 0), forKey: "inputRVector")
-        colorMatrix.setValue(CIVector(x: 0, y: 1, z: 0, w: 0), forKey: "inputGVector")
-        colorMatrix.setValue(CIVector(x: 0, y: 0, z: 1, w: 0), forKey: "inputBVector")
-        
-        guard let tinted = colorMatrix.outputImage else { 
-            return ciContext.createCGImage(edgeBlended, from: edgeBlended.extent)
+    private func blendImages(_ image1: CGImage?, _ image2: CGImage?, blend: CGFloat) -> CGImage? {
+        guard let img1 = image1, let img2 = image2 else {
+            return image1 ?? image2
         }
         
-        return ciContext.createCGImage(tinted, from: tinted.extent)
+        let ci1 = CIImage(cgImage: img1)
+        let ci2 = CIImage(cgImage: img2)
+        
+        guard let blendFilter = CIFilter(name: "CIDissolveTransition") else { return img1 }
+        blendFilter.setValue(ci1, forKey: kCIInputImageKey)
+        blendFilter.setValue(ci2, forKey: kCIInputTargetImageKey)
+        blendFilter.setValue(Float(blend), forKey: kCIInputTimeKey)
+        
+        guard let output = blendFilter.outputImage else { return img1 }
+        return ciContext.createCGImage(output, from: output.extent)
     }
 }
 
@@ -213,7 +226,6 @@ struct EdgeTransitionView: View {
     
     ctx.setFillColor(UIColor.white.cgColor)
     ctx.fillEllipse(in: CGRect(x: 100, y: 100, width: 200, height: 200))
-    ctx.fill(CGRect(x: 50, y: 400, width: 300, height: 100))
     
     let image = UIGraphicsGetImageFromCurrentImageContext()!
     UIGraphicsEndImageContext()
