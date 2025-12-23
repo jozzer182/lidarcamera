@@ -14,12 +14,26 @@ struct EdgeTransitionView: View {
                 .clipped()
                 .saturation(0) // SwiftUI native grayscale - instant, no processing
                 .onAppear {
-                    print("[EdgeTransition] ✅ B/W IMAGE IS NOW VISIBLE (saturation=0)")
+                    print("[EdgeTransition] ✅ IMAGE RENDERING")
+                    print("[EdgeTransition] sourceImage size: \(sourceImage.width)x\(sourceImage.height)")
+                    print("[EdgeTransition] sourceImage bitsPerPixel: \(sourceImage.bitsPerPixel)")
+                    print("[EdgeTransition] sourceImage bitsPerComponent: \(sourceImage.bitsPerComponent)")
+                    print("[EdgeTransition] geometry size: \(geometry.size)")
+                    
+                    // Check if image has content
+                    if let colorSpace = sourceImage.colorSpace {
+                        print("[EdgeTransition] colorSpace: \(colorSpace.name ?? "unknown" as CFString)")
+                    } else {
+                        print("[EdgeTransition] ⚠️ WARNING: No colorSpace!")
+                    }
                 }
         }
         .ignoresSafeArea()
         .onAppear {
-            print("[EdgeTransition] VIEW APPEARED - showing B/W of \(sourceImage.width)x\(sourceImage.height)")
+            print("[EdgeTransition] ========================================")
+            print("[EdgeTransition] VIEW APPEARED")
+            print("[EdgeTransition] sourceImage: \(sourceImage.width)x\(sourceImage.height)")
+            print("[EdgeTransition] ========================================")
         }
         .onDisappear {
             print("[EdgeTransition] VIEW DISAPPEARED")
