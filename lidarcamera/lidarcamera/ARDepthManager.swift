@@ -20,6 +20,13 @@ class ARDepthManager: NSObject, ObservableObject {
     private var frameThrottle: Date = .distantPast
     private let targetFPS: Double = 30
     
+    // Animation timer
+    private var animationTimer: Timer?
+    private var animationStartTime: Date = Date()
+    
+    /// Duration of one radar sweep cycle (near to far)
+    var sweepDuration: TimeInterval = 2.0
+    
     /// Band step in meters (adjustable via slider)
     var bandStep: Float = 0.05 {
         didSet {
@@ -88,11 +95,34 @@ class ARDepthManager: NSObject, ObservableObject {
         isRunning = true
         errorMessage = nil
         print("[ARDepthManager] Session started successfully")
+        
+        // Start animation timer
+        startAnimationTimer()
+    }
+    
+    /// Start the radar sweep animation timer
+    private func startAnimationTimer() {
+        animationStartTime = Date()
+        animationTimer?.invalidate()
+        animationTimer = Timer.scheduledTimer(withTimeInterval: 1.0/60.0, repeats: true) { [weak self] _ in
+            Task { @MainActor [weak self] in
+                self?.updateAnimation()
+            }
+        }
+    }
+    
+    /// Update animation phase based on elapsed time
+    private func updateAnimation() {
+        let elapsed = Date().timeIntervalSince(animationStartTime)
+        let phase = Float((elapsed.truncatingRemainder(dividingBy: sweepDuration)) / sweepDuration)
+        depthRenderer.animationPhase = phase
     }
     
     /// Pause ARKit session
     func pauseSession() {
         print("[ARDepthManager] pauseSession() called")
+        animationTimer?.invalidate()
+        animationTimer = nil
         session?.pause()
         isRunning = false
         depthImage = nil

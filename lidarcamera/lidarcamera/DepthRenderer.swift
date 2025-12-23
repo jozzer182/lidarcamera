@@ -25,6 +25,18 @@ class DepthRenderer {
     /// Use color mode (red=near, blue=far) instead of grayscale
     var useColorMode: Bool = false
     
+    /// Enable radar sweep animation
+    var enableRadarSweep: Bool = true
+    
+    /// Animation phase (0.0 = near, 1.0 = far) - cycles over sweep duration
+    var animationPhase: Float = 0.0
+    
+    /// How much to brighten the active sweep zone (0-1)
+    var sweepBrightness: Float = 0.5
+    
+    /// Width of the sweep "beam" as fraction of total depth range
+    var sweepWidth: Float = 0.15
+    
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     
     // MARK: - Public Methods
@@ -98,9 +110,15 @@ class DepthRenderer {
                 bandIndices[outputIndex] = bandIndex
                 
                 let normalizedDepth = (quantizedDepth - minRangeMeters) / (maxRangeMeters - minRangeMeters)
-                let grayValue = UInt8(max(0, min(255, (1.0 - normalizedDepth) * 255.0)))
+                var grayValue = (1.0 - normalizedDepth) * 255.0
                 
-                outputPixels[outputIndex] = grayValue
+                // Apply radar sweep effect
+                if enableRadarSweep {
+                    let sweepFactor = calculateSweepFactor(normalizedDepth: normalizedDepth)
+                    grayValue = min(255, grayValue + sweepFactor * sweepBrightness * 255.0)
+                }
+                
+                outputPixels[outputIndex] = UInt8(max(0, min(255, grayValue)))
             }
         }
         
@@ -147,8 +165,15 @@ class DepthRenderer {
                 // Normalized: 0 = near (red), 1 = far (blue)
                 let normalizedDepth = (quantizedDepth - minRangeMeters) / (maxRangeMeters - minRangeMeters)
                 
-                // HSL color: Hue varies 0°-240° (red→blue)
-                let (r, g, b) = hslColor(normalizedDepth: normalizedDepth)
+                // Calculate sweep factor for animation
+                var lightness: Float = 0.5
+                if enableRadarSweep {
+                    let sweepFactor = calculateSweepFactor(normalizedDepth: normalizedDepth)
+                    lightness = 0.5 + sweepFactor * sweepBrightness * 0.4 // Increase lightness up to 0.7
+                }
+                
+                // HSL color: Hue varies 0°-360°
+                let (r, g, b) = hslColorWithLightness(normalizedDepth: normalizedDepth, lightness: lightness)
                 
                 outputPixels[outputIndex] = r
                 outputPixels[outputIndex + 1] = g
@@ -166,13 +191,16 @@ class DepthRenderer {
     /// Generate color from depth using HSL: only Hue varies (0°=red/near → 360°=magenta/far)
     /// S=1.0, L=0.5 for vibrant colors
     private func hslColor(normalizedDepth: Float) -> (UInt8, UInt8, UInt8) {
+        return hslColorWithLightness(normalizedDepth: normalizedDepth, lightness: 0.5)
+    }
+    
+    /// Generate color with custom lightness for sweep animation
+    private func hslColorWithLightness(normalizedDepth: Float, lightness: Float) -> (UInt8, UInt8, UInt8) {
         let t = max(0, min(1, normalizedDepth))
         
-        // Hue: 0 (red) → 240 (blue) for near→far
-        // Using 0-240 range to go from red through yellow, green, cyan to blue
-        let hue = t * 240.0 // 0° to 240°
+        // Hue: 0° to 360°
+        let hue = t * 360.0
         let saturation: Float = 1.0
-        let lightness: Float = 0.5
         
         // Convert HSL to RGB
         let (r, g, b) = hslToRGB(h: hue, s: saturation, l: lightness)
@@ -182,6 +210,21 @@ class DepthRenderer {
             UInt8(max(0, min(255, g * 255))),
             UInt8(max(0, min(255, b * 255)))
         )
+    }
+    
+    /// Calculate sweep factor (0-1) based on how close normalizedDepth is to current animationPhase
+    /// Returns 1.0 when depth matches phase exactly, fading to 0 outside sweepWidth
+    private func calculateSweepFactor(normalizedDepth: Float) -> Float {
+        let distance = abs(normalizedDepth - animationPhase)
+        
+        // If outside sweep width, return 0
+        if distance > sweepWidth {
+            return 0
+        }
+        
+        // Smooth falloff within sweep width (cosine curve for smooth transition)
+        let normalizedDistance = distance / sweepWidth
+        return (1.0 + cos(normalizedDistance * .pi)) / 2.0
     }
     
     /// Convert HSL to RGB
