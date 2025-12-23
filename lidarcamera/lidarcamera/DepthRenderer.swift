@@ -2,7 +2,7 @@ import CoreImage
 import CoreVideo
 import Accelerate
 
-/// Renders depth buffer to grayscale banded image with contour lines
+/// Renders depth buffer to grayscale or color banded image with optional contour lines
 class DepthRenderer {
     
     // MARK: - Properties
@@ -10,10 +10,10 @@ class DepthRenderer {
     /// Step size for depth quantization in meters
     var stepMeters: Float = 0.05
     
-    /// Maximum depth range in meters (beyond this is black)
+    /// Maximum depth range in meters (beyond this is black/blue)
     var maxRangeMeters: Float = 3.0
     
-    /// Minimum depth in meters (closer is clamped to white)
+    /// Minimum depth in meters (closer is clamped to white/red)
     var minRangeMeters: Float = 0.1
     
     /// Enable contour lines at band boundaries
@@ -22,25 +22,20 @@ class DepthRenderer {
     /// Contour line intensity (0-1)
     var contourIntensity: Float = 0.8
     
+    /// Use color mode (red=near, blue=far) instead of grayscale
+    var useColorMode: Bool = false
+    
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
     
     // MARK: - Public Methods
     
-    /// Render depth map to grayscale banded CGImage with contours
+    /// Render depth map to banded CGImage (grayscale or color)
     func render(depthMap: CVPixelBuffer, confidenceMap: CVPixelBuffer?) -> CGImage? {
         CVPixelBufferLockBaseAddress(depthMap, .readOnly)
         defer { CVPixelBufferUnlockBaseAddress(depthMap, .readOnly) }
         
         let width = CVPixelBufferGetWidth(depthMap)
         let height = CVPixelBufferGetHeight(depthMap)
-        
-        // Log first frame dimensions
-        if width > 0 && height > 0 {
-            // Only log occasionally to avoid spam
-            if Int.random(in: 0..<100) == 0 {
-                print("[DepthRenderer] Rendering depth: \(width)x\(height), step: \(stepMeters)m")
-            }
-        }
         
         guard let baseAddress = CVPixelBufferGetBaseAddress(depthMap) else {
             print("[DepthRenderer] ERROR: Could not get base address of depth buffer")
@@ -51,11 +46,39 @@ class DepthRenderer {
         let bytesPerRow = CVPixelBufferGetBytesPerRow(depthMap)
         let floatsPerRow = bytesPerRow / MemoryLayout<Float32>.size
         
-        // Create output buffer for grayscale image
-        var outputPixels = [UInt8](repeating: 0, count: width * height)
+        // Band indices for contour detection
         var bandIndices = [Int](repeating: 0, count: width * height)
         
-        // Process each pixel
+        if useColorMode {
+            return renderColor(
+                depthPointer: depthPointer,
+                floatsPerRow: floatsPerRow,
+                width: width,
+                height: height,
+                bandIndices: &bandIndices
+            )
+        } else {
+            return renderGrayscale(
+                depthPointer: depthPointer,
+                floatsPerRow: floatsPerRow,
+                width: width,
+                height: height,
+                bandIndices: &bandIndices
+            )
+        }
+    }
+    
+    // MARK: - Grayscale Rendering
+    
+    private func renderGrayscale(
+        depthPointer: UnsafeMutablePointer<Float32>,
+        floatsPerRow: Int,
+        width: Int,
+        height: Int,
+        bandIndices: inout [Int]
+    ) -> CGImage? {
+        var outputPixels = [UInt8](repeating: 0, count: width * height)
+        
         for y in 0..<height {
             for x in 0..<width {
                 let depthIndex = y * floatsPerRow + x
@@ -63,22 +86,17 @@ class DepthRenderer {
                 
                 let depthValue = depthPointer[depthIndex]
                 
-                // Handle invalid depth (NaN, Inf, or out of range)
                 guard depthValue.isFinite && depthValue > 0 else {
-                    outputPixels[outputIndex] = 0 // Black for invalid
+                    outputPixels[outputIndex] = 0
                     bandIndices[outputIndex] = -1
                     continue
                 }
                 
-                // Clamp depth to range
                 let clampedDepth = max(minRangeMeters, min(depthValue, maxRangeMeters))
-                
-                // Quantize to bands
                 let bandIndex = Int(floor(clampedDepth / stepMeters))
                 let quantizedDepth = Float(bandIndex) * stepMeters
                 bandIndices[outputIndex] = bandIndex
                 
-                // Map to grayscale (near = white, far = black)
                 let normalizedDepth = (quantizedDepth - minRangeMeters) / (maxRangeMeters - minRangeMeters)
                 let grayValue = UInt8(max(0, min(255, (1.0 - normalizedDepth) * 255.0)))
                 
@@ -86,24 +104,109 @@ class DepthRenderer {
             }
         }
         
-        // Add contour lines at band boundaries
         if showContours {
-            addContourLines(
-                pixels: &outputPixels,
-                bandIndices: bandIndices,
-                width: width,
-                height: height
-            )
+            addContourLinesToGrayscale(pixels: &outputPixels, bandIndices: bandIndices, width: width, height: height)
         }
         
-        // Create CGImage from pixel buffer
-        return createCGImage(from: outputPixels, width: width, height: height)
+        return createGrayscaleCGImage(from: outputPixels, width: width, height: height)
     }
     
-    // MARK: - Private Methods
+    // MARK: - Color Rendering (Red = Near, Blue = Far)
     
-    /// Add contour lines where band indices differ between adjacent pixels
-    private func addContourLines(
+    private func renderColor(
+        depthPointer: UnsafeMutablePointer<Float32>,
+        floatsPerRow: Int,
+        width: Int,
+        height: Int,
+        bandIndices: inout [Int]
+    ) -> CGImage? {
+        // RGB pixels (3 bytes per pixel)
+        var outputPixels = [UInt8](repeating: 0, count: width * height * 3)
+        
+        for y in 0..<height {
+            for x in 0..<width {
+                let depthIndex = y * floatsPerRow + x
+                let outputIndex = (y * width + x) * 3
+                
+                let depthValue = depthPointer[depthIndex]
+                
+                guard depthValue.isFinite && depthValue > 0 else {
+                    // Black for invalid
+                    outputPixels[outputIndex] = 0     // R
+                    outputPixels[outputIndex + 1] = 0 // G
+                    outputPixels[outputIndex + 2] = 0 // B
+                    bandIndices[y * width + x] = -1
+                    continue
+                }
+                
+                let clampedDepth = max(minRangeMeters, min(depthValue, maxRangeMeters))
+                let bandIndex = Int(floor(clampedDepth / stepMeters))
+                let quantizedDepth = Float(bandIndex) * stepMeters
+                bandIndices[y * width + x] = bandIndex
+                
+                // Normalized: 0 = near (red), 1 = far (blue)
+                let normalizedDepth = (quantizedDepth - minRangeMeters) / (maxRangeMeters - minRangeMeters)
+                
+                // Color gradient: Red → Orange → Yellow → Green → Cyan → Blue
+                let (r, g, b) = heatmapColor(normalizedDepth: normalizedDepth)
+                
+                outputPixels[outputIndex] = r
+                outputPixels[outputIndex + 1] = g
+                outputPixels[outputIndex + 2] = b
+            }
+        }
+        
+        if showContours {
+            addContourLinesToColor(pixels: &outputPixels, bandIndices: bandIndices, width: width, height: height)
+        }
+        
+        return createRGBCGImage(from: outputPixels, width: width, height: height)
+    }
+    
+    /// Generate heatmap color: near (0) = red/warm, far (1) = blue/cold
+    private func heatmapColor(normalizedDepth: Float) -> (UInt8, UInt8, UInt8) {
+        let t = max(0, min(1, normalizedDepth))
+        
+        var r: Float = 0
+        var g: Float = 0
+        var b: Float = 0
+        
+        if t < 0.25 {
+            // Red → Orange (0.0 - 0.25)
+            let localT = t / 0.25
+            r = 1.0
+            g = localT * 0.5
+            b = 0
+        } else if t < 0.5 {
+            // Orange → Yellow → Green (0.25 - 0.5)
+            let localT = (t - 0.25) / 0.25
+            r = 1.0 - localT * 0.5
+            g = 0.5 + localT * 0.5
+            b = 0
+        } else if t < 0.75 {
+            // Green → Cyan (0.5 - 0.75)
+            let localT = (t - 0.5) / 0.25
+            r = 0.5 - localT * 0.5
+            g = 1.0 - localT * 0.3
+            b = localT * 0.7
+        } else {
+            // Cyan → Blue → Dark Blue (0.75 - 1.0)
+            let localT = (t - 0.75) / 0.25
+            r = 0
+            g = 0.7 - localT * 0.7
+            b = 0.7 + localT * 0.3
+        }
+        
+        return (
+            UInt8(max(0, min(255, r * 255))),
+            UInt8(max(0, min(255, g * 255))),
+            UInt8(max(0, min(255, b * 255)))
+        )
+    }
+    
+    // MARK: - Contour Lines
+    
+    private func addContourLinesToGrayscale(
         pixels: inout [UInt8],
         bandIndices: [Int],
         width: Int,
@@ -116,15 +219,13 @@ class DepthRenderer {
                 let idx = y * width + x
                 let currentBand = bandIndices[idx]
                 
-                // Skip invalid pixels
                 guard currentBand >= 0 else { continue }
                 
-                // Check 4-connected neighbors for band boundary
                 let neighbors = [
-                    bandIndices[idx - 1],         // left
-                    bandIndices[idx + 1],         // right
-                    bandIndices[idx - width],     // top
-                    bandIndices[idx + width]      // bottom
+                    bandIndices[idx - 1],
+                    bandIndices[idx + 1],
+                    bandIndices[idx - width],
+                    bandIndices[idx + width]
                 ]
                 
                 var isEdge = false
@@ -136,7 +237,6 @@ class DepthRenderer {
                 }
                 
                 if isEdge {
-                    // Draw contour (bright line) - use safe arithmetic to avoid overflow
                     let currentValue = Int(pixels[idx])
                     let addValue = Int(contourValue) / 2
                     pixels[idx] = UInt8(min(255, currentValue + addValue))
@@ -145,8 +245,48 @@ class DepthRenderer {
         }
     }
     
-    /// Create CGImage from grayscale pixel array
-    private func createCGImage(from pixels: [UInt8], width: Int, height: Int) -> CGImage? {
+    private func addContourLinesToColor(
+        pixels: inout [UInt8],
+        bandIndices: [Int],
+        width: Int,
+        height: Int
+    ) {
+        for y in 1..<(height - 1) {
+            for x in 1..<(width - 1) {
+                let idx = y * width + x
+                let currentBand = bandIndices[idx]
+                
+                guard currentBand >= 0 else { continue }
+                
+                let neighbors = [
+                    bandIndices[idx - 1],
+                    bandIndices[idx + 1],
+                    bandIndices[idx - width],
+                    bandIndices[idx + width]
+                ]
+                
+                var isEdge = false
+                for neighborBand in neighbors {
+                    if neighborBand >= 0 && neighborBand != currentBand {
+                        isEdge = true
+                        break
+                    }
+                }
+                
+                if isEdge {
+                    // White contour line for color mode
+                    let pixelIdx = idx * 3
+                    pixels[pixelIdx] = 255     // R
+                    pixels[pixelIdx + 1] = 255 // G
+                    pixels[pixelIdx + 2] = 255 // B
+                }
+            }
+        }
+    }
+    
+    // MARK: - CGImage Creation
+    
+    private func createGrayscaleCGImage(from pixels: [UInt8], width: Int, height: Int) -> CGImage? {
         let colorSpace = CGColorSpaceCreateDeviceGray()
         let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
         
@@ -160,6 +300,29 @@ class DepthRenderer {
             bitsPerComponent: 8,
             bitsPerPixel: 8,
             bytesPerRow: width,
+            space: colorSpace,
+            bitmapInfo: bitmapInfo,
+            provider: provider,
+            decode: nil,
+            shouldInterpolate: false,
+            intent: .defaultIntent
+        )
+    }
+    
+    private func createRGBCGImage(from pixels: [UInt8], width: Int, height: Int) -> CGImage? {
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let bitmapInfo = CGBitmapInfo(rawValue: CGImageAlphaInfo.none.rawValue)
+        
+        guard let provider = CGDataProvider(data: Data(pixels) as CFData) else {
+            return nil
+        }
+        
+        return CGImage(
+            width: width,
+            height: height,
+            bitsPerComponent: 8,
+            bitsPerPixel: 24,
+            bytesPerRow: width * 3,
             space: colorSpace,
             bitmapInfo: bitmapInfo,
             provider: provider,

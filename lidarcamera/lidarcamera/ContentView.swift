@@ -15,6 +15,8 @@ struct ContentView: View {
     @State private var selectedLens: Lens = .wide
     @State private var bandStep: Float = 0.05 // 5cm default
     @State private var showDepthError = false
+    @State private var useColorMode = false // B/W by default
+    @State private var showContours = false // Off by default
     
     /// Whether we're in LiDAR mode (showing depth view)
     private var isLiDARMode: Bool {
@@ -48,6 +50,21 @@ struct ContentView: View {
                             isLensPanelExpanded = false
                         }
                     }
+            }
+            
+            // Depth toggles (top, only in LiDAR mode)
+            if isLiDARMode && !isLensPanelExpanded {
+                VStack {
+                    DepthToggles(useColorMode: $useColorMode, showContours: $showContours)
+                        .padding(.top, 60)
+                        .onChange(of: useColorMode) { _, newValue in
+                            depthManager.useColorMode = newValue
+                        }
+                        .onChange(of: showContours) { _, newValue in
+                            depthManager.showContours = newValue
+                        }
+                    Spacer()
+                }
             }
             
             // Band slider (right side, only in LiDAR mode)

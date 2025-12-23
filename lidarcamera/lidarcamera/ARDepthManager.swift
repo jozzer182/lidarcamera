@@ -27,6 +27,20 @@ class ARDepthManager: NSObject, ObservableObject {
         }
     }
     
+    /// Show contour lines at band boundaries
+    var showContours: Bool = false {
+        didSet {
+            depthRenderer.showContours = showContours
+        }
+    }
+    
+    /// Use color mode (red=near, blue=far) instead of B/W
+    var useColorMode: Bool = false {
+        didSet {
+            depthRenderer.useColorMode = useColorMode
+        }
+    }
+    
     // MARK: - Initialization
     
     override init() {
