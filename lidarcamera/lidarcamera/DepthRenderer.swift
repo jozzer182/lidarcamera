@@ -34,7 +34,16 @@ class DepthRenderer {
         let width = CVPixelBufferGetWidth(depthMap)
         let height = CVPixelBufferGetHeight(depthMap)
         
+        // Log first frame dimensions
+        if width > 0 && height > 0 {
+            // Only log occasionally to avoid spam
+            if Int.random(in: 0..<100) == 0 {
+                print("[DepthRenderer] Rendering depth: \(width)x\(height), step: \(stepMeters)m")
+            }
+        }
+        
         guard let baseAddress = CVPixelBufferGetBaseAddress(depthMap) else {
+            print("[DepthRenderer] ERROR: Could not get base address of depth buffer")
             return nil
         }
         

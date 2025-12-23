@@ -96,10 +96,12 @@ class CameraManager: NSObject, ObservableObject {
     /// Pause camera session synchronously (when switching to LiDAR mode)
     /// Uses semaphore to ensure camera is fully stopped before returning
     func pauseSession() {
+        print("[CameraManager] pauseSession() called")
         let semaphore = DispatchSemaphore(value: 0)
         
         sessionQueue.async { [weak self] in
             guard let self = self else {
+                print("[CameraManager] pauseSession: self is nil")
                 semaphore.signal()
                 return
             }
@@ -118,30 +120,51 @@ class CameraManager: NSObject, ObservableObject {
             
             // Stop session
             if self.session.isRunning {
+                print("[CameraManager] Stopping AVCaptureSession...")
                 self.session.stopRunning()
+                print("[CameraManager] AVCaptureSession stopped")
+            } else {
+                print("[CameraManager] Session was not running")
             }
             
             // Small delay to ensure hardware is released
+            print("[CameraManager] Waiting 100ms for hardware release...")
             Thread.sleep(forTimeInterval: 0.1)
+            print("[CameraManager] Hardware release delay complete")
             
             semaphore.signal()
         }
         
         // Wait for session to fully stop (max 2 seconds)
-        _ = semaphore.wait(timeout: .now() + 2.0)
+        print("[CameraManager] Waiting for session to stop...")
+        let result = semaphore.wait(timeout: .now() + 2.0)
+        if result == .timedOut {
+            print("[CameraManager] WARNING: Semaphore timed out!")
+        } else {
+            print("[CameraManager] Session stopped successfully")
+        }
         flashEnabled = false
     }
     
     /// Resume camera session (when switching back from LiDAR mode)
     func resumeSession() {
+        print("[CameraManager] resumeSession() called")
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
+            guard let self = self else {
+                print("[CameraManager] resumeSession: self is nil")
+                return
+            }
             
             // Small delay before restarting
+            print("[CameraManager] Waiting 100ms before restart...")
             Thread.sleep(forTimeInterval: 0.1)
             
             if !self.session.isRunning {
+                print("[CameraManager] Starting AVCaptureSession...")
                 self.session.startRunning()
+                print("[CameraManager] AVCaptureSession started")
+            } else {
+                print("[CameraManager] Session was already running")
             }
         }
     }

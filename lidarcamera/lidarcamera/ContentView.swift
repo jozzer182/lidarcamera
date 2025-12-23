@@ -132,10 +132,12 @@ struct ContentView: View {
     // MARK: - Mode Switching
     
     private func handleLensChange(from oldLens: Lens, to newLens: Lens) {
+        print("[ContentView] handleLensChange: \(oldLens) -> \(newLens)")
         let wasLiDAR = oldLens == .lidar
         let isNowLiDAR = newLens == .lidar
         
         if isNowLiDAR && !wasLiDAR {
+            print("[ContentView] Switching TO LiDAR mode")
             // Switching TO LiDAR mode - do this on background to avoid blocking main
             Task.detached(priority: .userInitiated) {
                 await MainActor.run {
@@ -162,15 +164,18 @@ struct ContentView: View {
                 }
             }
         } else if !isNowLiDAR && wasLiDAR {
+            print("[ContentView] Switching FROM LiDAR mode to camera")
             // Switching FROM LiDAR mode to camera
             depthManager.pauseSession()
             
             // Small delay before resuming camera
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                print("[ContentView] Resuming camera after delay")
                 cameraManager.resumeSession()
                 cameraManager.switchLens(to: newLens)
             }
         } else if !isNowLiDAR {
+            print("[ContentView] Normal lens switch (camera modes)")
             // Normal lens switch (camera modes)
             cameraManager.switchLens(to: newLens)
         }
