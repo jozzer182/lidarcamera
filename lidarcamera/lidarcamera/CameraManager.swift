@@ -372,7 +372,11 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
         
         // Create CIImage from pixel buffer
-        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        var ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        
+        // Rotate 90 degrees clockwise to match portrait orientation
+        // The camera captures in landscape, we need to rotate for portrait display
+        ciImage = ciImage.oriented(.right)
         
         // Create CGImage with proper color space
         let context = CIContext(options: nil)
@@ -384,3 +388,4 @@ extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
         }
     }
 }
+
