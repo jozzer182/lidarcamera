@@ -15,7 +15,7 @@ struct EdgeTransitionView: View {
     @State private var isPrecomputing: Bool = true
     
     private let ciContext = CIContext(options: [.useSoftwareRenderer: false])
-    private let frameCount = 5 // Total keyframes to pre-compute
+    private let frameCount = 10 // Total keyframes to pre-compute
     
     var body: some View {
         GeometryReader { geometry in
