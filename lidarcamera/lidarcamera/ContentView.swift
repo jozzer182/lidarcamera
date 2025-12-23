@@ -42,7 +42,13 @@ struct ContentView: View {
             if showEdgeTransition, let snapshot = transitionSnapshot {
                 EdgeTransitionView(sourceImage: snapshot)
                     .ignoresSafeArea()
-                    .transition(.opacity)
+                    .zIndex(999) // Force on top of everything
+                    .onAppear {
+                        print("[ContentView-ZStack] EdgeTransitionView APPEARED in ZStack")
+                    }
+                    .onDisappear {
+                        print("[ContentView-ZStack] EdgeTransitionView DISAPPEARED from ZStack")
+                    }
             }
             
             // Permission denied overlay
