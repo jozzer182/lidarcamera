@@ -27,40 +27,39 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            // Preview layer (camera or depth based on mode)
-            if isLiDARMode {
-                // LiDAR depth visualization
-                DepthPreviewView(depthManager: depthManager)
-                    .ignoresSafeArea()
-                    .onAppear {
-                        print("[ContentView-ZStack] 🔴 DepthPreviewView APPEARED (isLiDARMode=true)")
-                    }
-                    .onDisappear {
-                        print("[ContentView-ZStack] 🔴 DepthPreviewView DISAPPEARED")
-                    }
-            } else {
-                // Normal camera preview
-                CameraPreviewView(session: cameraManager.session, lastFrameSnapshot: $cameraManager.lastFrameSnapshot)
-                    .ignoresSafeArea()
-                    .onAppear {
-                        print("[ContentView-ZStack] 📷 CameraPreviewView APPEARED (isLiDARMode=false)")
-                    }
-                    .onDisappear {
-                        print("[ContentView-ZStack] 📷 CameraPreviewView DISAPPEARED")
-                    }
-            }
-            
-            // Edge detection transition overlay (during LiDAR loading)
+            // DURING TRANSITION: Only show EdgeTransitionView (B/W image)
             if showEdgeTransition, let snapshot = transitionSnapshot {
                 EdgeTransitionView(sourceImage: snapshot)
                     .ignoresSafeArea()
-                    .zIndex(999) // Force on top of everything
                     .onAppear {
-                        print("[ContentView-ZStack] ⬛ EdgeTransitionView APPEARED (showEdgeTransition=\(showEdgeTransition), snapshot exists)")
+                        print("[ContentView-ZStack] ⬛ TRANSITION ACTIVE - showing B/W image ONLY")
                     }
                     .onDisappear {
-                        print("[ContentView-ZStack] ⬛ EdgeTransitionView DISAPPEARED")
+                        print("[ContentView-ZStack] ⬛ TRANSITION ENDED")
                     }
+            } else {
+                // NORMAL MODE: Show camera or depth
+                if isLiDARMode {
+                    // LiDAR depth visualization
+                    DepthPreviewView(depthManager: depthManager)
+                        .ignoresSafeArea()
+                        .onAppear {
+                            print("[ContentView-ZStack] 🔴 DepthPreviewView APPEARED (no transition)")
+                        }
+                        .onDisappear {
+                            print("[ContentView-ZStack] 🔴 DepthPreviewView DISAPPEARED")
+                        }
+                } else {
+                    // Normal camera preview
+                    CameraPreviewView(session: cameraManager.session, lastFrameSnapshot: $cameraManager.lastFrameSnapshot)
+                        .ignoresSafeArea()
+                        .onAppear {
+                            print("[ContentView-ZStack] 📷 CameraPreviewView APPEARED")
+                        }
+                        .onDisappear {
+                            print("[ContentView-ZStack] 📷 CameraPreviewView DISAPPEARED")
+                        }
+                }
             }
             
             // Permission denied overlay
