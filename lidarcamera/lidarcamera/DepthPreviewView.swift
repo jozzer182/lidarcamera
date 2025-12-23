@@ -22,12 +22,13 @@ struct DepthPreviewView: View {
                     blurredBackground(from: cgImage, size: geometry.size)
                         .ignoresSafeArea()
                     
-                    // Layer 2: Sharp depth image (maintains aspect ratio)
+                    // Layer 2: Sharp depth image (fills width, clips top/bottom)
                     Image(decorative: cgImage, scale: 1.0, orientation: .up)
                         .resizable()
-                        .aspectRatio(contentMode: .fit)
+                        .aspectRatio(contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .rotationEffect(.degrees(90))
+                        .clipped()
                     
                 } else if depthManager.isRunning {
                     // Loading indicator
