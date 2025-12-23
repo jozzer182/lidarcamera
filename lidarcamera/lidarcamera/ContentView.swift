@@ -323,7 +323,7 @@ struct ContentView: View {
                 }
             }
             .frame(width: 100, height: 100)
-            .glassEffect(.regular, in: .rect(cornerRadius: 20))
+            .glassEffect(.clear, in: .rect(cornerRadius: 20))
         }
     }
     
@@ -362,7 +362,7 @@ struct ContentView: View {
             }
         }
         .frame(width: frameSize, height: frameSize)
-        .glassEffect(.regular, in: .rect(cornerRadius: 36))
+        .glassEffect(.clear, in: .rect(cornerRadius: 36))
     }
     
     // MARK: - Mini Lens Ring (Collapsed - Contours)
