@@ -21,6 +21,7 @@ class CameraManager: NSObject, ObservableObject {
     @Published var showToast = false
     @Published var toastMessage = ""
     @Published var flashEnabled = false
+    @Published var lastFrameSnapshot: CGImage? // For LiDAR transition effect
     
     // MARK: - Session Properties
     

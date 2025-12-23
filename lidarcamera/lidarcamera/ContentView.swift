@@ -17,6 +17,8 @@ struct ContentView: View {
     @State private var showDepthError = false
     @State private var useColorMode = false // B/W by default
     @State private var showContours = false // Off by default
+    @State private var showEdgeTransition = false // Loading transition
+    @State private var transitionSnapshot: CGImage? // Captured frame for transition
     
     /// Whether we're in LiDAR mode (showing depth view)
     private var isLiDARMode: Bool {
@@ -32,8 +34,15 @@ struct ContentView: View {
                     .ignoresSafeArea()
             } else {
                 // Normal camera preview
-                CameraPreviewView(session: cameraManager.session)
+                CameraPreviewView(session: cameraManager.session, lastFrameSnapshot: $cameraManager.lastFrameSnapshot)
                     .ignoresSafeArea()
+            }
+            
+            // Edge detection transition overlay (during LiDAR loading)
+            if showEdgeTransition, let snapshot = transitionSnapshot {
+                EdgeTransitionView(sourceImage: snapshot)
+                    .ignoresSafeArea()
+                    .transition(.opacity)
             }
             
             // Permission denied overlay
@@ -155,6 +164,15 @@ struct ContentView: View {
         
         if isNowLiDAR && !wasLiDAR {
             print("[ContentView] Switching TO LiDAR mode")
+            
+            // Capture current camera frame for transition
+            if let snapshot = cameraManager.lastFrameSnapshot {
+                transitionSnapshot = snapshot
+                withAnimation(.easeIn(duration: 0.2)) {
+                    showEdgeTransition = true
+                }
+            }
+            
             // Switching TO LiDAR mode - do this on background to avoid blocking main
             Task.detached(priority: .userInitiated) {
                 await MainActor.run {
@@ -169,8 +187,18 @@ struct ContentView: View {
                     if depthManager.isDepthSupported {
                         depthManager.bandStep = bandStep
                         depthManager.startSession()
+                        
+                        // Hide transition after 1.5 seconds
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                            withAnimation(.easeOut(duration: 0.3)) {
+                                showEdgeTransition = false
+                            }
+                            transitionSnapshot = nil
+                        }
                     } else {
                         showDepthError = true
+                        showEdgeTransition = false
+                        transitionSnapshot = nil
                         DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
                             showDepthError = false
                             withAnimation {
