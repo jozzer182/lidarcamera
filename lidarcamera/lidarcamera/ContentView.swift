@@ -32,10 +32,22 @@ struct ContentView: View {
                 // LiDAR depth visualization
                 DepthPreviewView(depthManager: depthManager)
                     .ignoresSafeArea()
+                    .onAppear {
+                        print("[ContentView-ZStack] 🔴 DepthPreviewView APPEARED (isLiDARMode=true)")
+                    }
+                    .onDisappear {
+                        print("[ContentView-ZStack] 🔴 DepthPreviewView DISAPPEARED")
+                    }
             } else {
                 // Normal camera preview
                 CameraPreviewView(session: cameraManager.session, lastFrameSnapshot: $cameraManager.lastFrameSnapshot)
                     .ignoresSafeArea()
+                    .onAppear {
+                        print("[ContentView-ZStack] 📷 CameraPreviewView APPEARED (isLiDARMode=false)")
+                    }
+                    .onDisappear {
+                        print("[ContentView-ZStack] 📷 CameraPreviewView DISAPPEARED")
+                    }
             }
             
             // Edge detection transition overlay (during LiDAR loading)
@@ -44,10 +56,10 @@ struct ContentView: View {
                     .ignoresSafeArea()
                     .zIndex(999) // Force on top of everything
                     .onAppear {
-                        print("[ContentView-ZStack] EdgeTransitionView APPEARED in ZStack")
+                        print("[ContentView-ZStack] ⬛ EdgeTransitionView APPEARED (showEdgeTransition=\(showEdgeTransition), snapshot exists)")
                     }
                     .onDisappear {
-                        print("[ContentView-ZStack] EdgeTransitionView DISAPPEARED from ZStack")
+                        print("[ContentView-ZStack] ⬛ EdgeTransitionView DISAPPEARED")
                     }
             }
             
