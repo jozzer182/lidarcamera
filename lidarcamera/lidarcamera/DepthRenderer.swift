@@ -50,7 +50,6 @@ class DepthRenderer {
         let height = CVPixelBufferGetHeight(depthMap)
         
         guard let baseAddress = CVPixelBufferGetBaseAddress(depthMap) else {
-            print("[DepthRenderer] ERROR: Could not get base address of depth buffer")
             return nil
         }
         

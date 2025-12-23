@@ -27,38 +27,18 @@ struct ContentView: View {
     
     var body: some View {
         ZStack {
-            // DURING TRANSITION: Only show EdgeTransitionView (B/W image)
+            // DURING TRANSITION: Only show EdgeTransitionView
             if showEdgeTransition, let snapshot = transitionSnapshot {
                 EdgeTransitionView(sourceImage: snapshot)
                     .ignoresSafeArea()
-                    .onAppear {
-                        print("[ContentView-ZStack] ⬛ TRANSITION ACTIVE - showing B/W image ONLY")
-                    }
-                    .onDisappear {
-                        print("[ContentView-ZStack] ⬛ TRANSITION ENDED")
-                    }
             } else {
                 // NORMAL MODE: Show camera or depth
                 if isLiDARMode {
-                    // LiDAR depth visualization
                     DepthPreviewView(depthManager: depthManager)
                         .ignoresSafeArea()
-                        .onAppear {
-                            print("[ContentView-ZStack] 🔴 DepthPreviewView APPEARED (no transition)")
-                        }
-                        .onDisappear {
-                            print("[ContentView-ZStack] 🔴 DepthPreviewView DISAPPEARED")
-                        }
                 } else {
-                    // Normal camera preview
                     CameraPreviewView(session: cameraManager.session, lastFrameSnapshot: $cameraManager.lastFrameSnapshot)
                         .ignoresSafeArea()
-                        .onAppear {
-                            print("[ContentView-ZStack] 📷 CameraPreviewView APPEARED")
-                        }
-                        .onDisappear {
-                            print("[ContentView-ZStack] 📷 CameraPreviewView DISAPPEARED")
-                        }
                 }
             }
             
@@ -175,52 +155,34 @@ struct ContentView: View {
     // MARK: - Mode Switching
     
     private func handleLensChange(from oldLens: Lens, to newLens: Lens) {
-        print("[ContentView] handleLensChange: \(oldLens) -> \(newLens)")
         let wasLiDAR = oldLens == .lidar
         let isNowLiDAR = newLens == .lidar
         
         if isNowLiDAR && !wasLiDAR {
-            print("[ContentView] ===== SWITCHING TO LIDAR MODE =====")
-            print("[ContentView] Step 1: Checking for snapshot...")
-            
-            // Step 1: Capture snapshot and START ANIMATION FIRST
+            // Capture snapshot for transition animation
             if let snapshot = cameraManager.lastFrameSnapshot {
-                print("[ContentView] Step 2: Snapshot captured, size: \(snapshot.width)x\(snapshot.height)")
                 transitionSnapshot = snapshot
-                
-                print("[ContentView] Step 3: Starting edge transition animation NOW")
                 withAnimation(.easeIn(duration: 0.2)) {
                     showEdgeTransition = true
                 }
-                print("[ContentView] Step 3b: showEdgeTransition = \(showEdgeTransition)")
-            } else {
-                print("[ContentView] WARNING: No snapshot available!")
             }
             
-            // Wait 0.5 seconds to show B/W image, then start LiDAR
-            print("[ContentView] Step 4: Scheduling LiDAR init in 0.5s...")
+            // Start LiDAR after brief delay
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
-                print("[ContentView] Step 5: 0.5s passed, starting LiDAR...")
-                
-                // Pause camera and start LiDAR on background thread
                 Task.detached(priority: .userInitiated) {
                     await MainActor.run {
-                        print("[ContentView] Step 6: Pausing camera...")
                         cameraManager.pauseSession()
                     }
                     
-                    try? await Task.sleep(nanoseconds: 100_000_000) // 100ms hardware delay
+                    try? await Task.sleep(nanoseconds: 100_000_000)
                     
                     await MainActor.run {
-                        print("[ContentView] Step 7: Starting LiDAR session...")
                         if depthManager.isDepthSupported {
                             depthManager.bandStep = bandStep
                             depthManager.startSession()
-                            print("[ContentView] Step 8: LiDAR started, transition will hide in 1s")
                             
-                            // Keep showing B/W image for 1 more second so user can see it
+                            // Hide transition after animation completes
                             DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
-                                print("[ContentView] Step 9: Hiding transition NOW")
                                 showEdgeTransition = false
                                 transitionSnapshot = nil
                             }
@@ -239,18 +201,14 @@ struct ContentView: View {
                 }
             }
         } else if !isNowLiDAR && wasLiDAR {
-            print("[ContentView] Switching FROM LiDAR mode to camera")
-            // Switching FROM LiDAR mode to camera
+            // Switching from LiDAR to camera
             depthManager.pauseSession()
             
-            // Small delay before resuming camera
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-                print("[ContentView] Resuming camera after delay")
                 cameraManager.resumeSession()
                 cameraManager.switchLens(to: newLens)
             }
         } else if !isNowLiDAR {
-            print("[ContentView] Normal lens switch (camera modes)")
             // Normal lens switch (camera modes)
             cameraManager.switchLens(to: newLens)
         }

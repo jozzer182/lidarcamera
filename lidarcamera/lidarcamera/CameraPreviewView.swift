@@ -59,21 +59,16 @@ struct CameraPreviewView: UIViewRepresentable {
         override func didMoveToWindow() {
             super.didMoveToWindow()
             if window != nil {
-                print("[CameraPreviewView] 🟢 View added to window, starting snapshot timer")
                 startSnapshotCapture()
             } else {
-                print("[CameraPreviewView] 🔴 View removed from window, stopping timer")
                 stopSnapshotCapture()
             }
         }
         
         private func startSnapshotCapture() {
-            print("[CameraPreviewView] ⏱️ Starting snapshot timer (every 0.5s)")
-            // Capture snapshot every 0.5 seconds for transition effect
             snapshotTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 self?.captureSnapshot()
             }
-            // Also capture first snapshot immediately
             captureSnapshot()
         }
         
@@ -85,14 +80,10 @@ struct CameraPreviewView: UIViewRepresentable {
         private func captureSnapshot() {
             guard bounds.width > 0, bounds.height > 0 else { return }
             
-            // Use explicit SRGB color space for the snapshot
             let scale = UIScreen.main.scale
             let width = Int(bounds.width * scale)
             let height = Int(bounds.height * scale)
             
-            print("[CameraPreviewView] Capturing snapshot: \(width)x\(height) @ scale \(scale)")
-            
-            // Create bitmap context with SRGB color space
             guard let colorSpace = CGColorSpace(name: CGColorSpace.sRGB),
                   let context = CGContext(
                     data: nil,
@@ -102,27 +93,12 @@ struct CameraPreviewView: UIViewRepresentable {
                     bytesPerRow: width * 4,
                     space: colorSpace,
                     bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-                  ) else {
-                print("[CameraPreviewView] ❌ Failed to create CGContext")
-                return
-            }
+                  ) else { return }
             
-            // Scale context to match screen scale
             context.scaleBy(x: scale, y: scale)
-            
-            // Render the layer into our context
             layer.render(in: context)
             
-            // Create CGImage from context
-            guard let cgImage = context.makeImage() else {
-                print("[CameraPreviewView] ❌ Failed to create CGImage")
-                return
-            }
-            
-            print("[CameraPreviewView] ✅ Snapshot captured!")
-            print("[CameraPreviewView] colorSpace: \(cgImage.colorSpace?.name ?? "nil" as CFString)")
-            print("[CameraPreviewView] bitsPerPixel: \(cgImage.bitsPerPixel)")
-            
+            guard let cgImage = context.makeImage() else { return }
             coordinator?.updateSnapshot(cgImage)
         }
         
