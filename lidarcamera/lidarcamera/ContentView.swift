@@ -163,46 +163,70 @@ struct ContentView: View {
         let isNowLiDAR = newLens == .lidar
         
         if isNowLiDAR && !wasLiDAR {
-            print("[ContentView] Switching TO LiDAR mode")
+            print("[ContentView] ===== SWITCHING TO LIDAR MODE =====")
+            print("[ContentView] Step 1: Checking for snapshot...")
             
-            // Capture current camera frame for transition
+            // Step 1: Capture snapshot and START ANIMATION FIRST
             if let snapshot = cameraManager.lastFrameSnapshot {
+                print("[ContentView] Step 2: Snapshot captured, size: \(snapshot.width)x\(snapshot.height)")
                 transitionSnapshot = snapshot
+                
+                print("[ContentView] Step 3: Starting edge transition animation NOW")
                 withAnimation(.easeIn(duration: 0.2)) {
                     showEdgeTransition = true
                 }
+                print("[ContentView] Step 3b: showEdgeTransition = \(showEdgeTransition)")
+            } else {
+                print("[ContentView] WARNING: No snapshot available!")
             }
             
-            // Switching TO LiDAR mode - do this on background to avoid blocking main
-            Task.detached(priority: .userInitiated) {
-                await MainActor.run {
-                    // Pause camera synchronously
-                    cameraManager.pauseSession()
-                }
+            // Step 2: Wait 0.7 seconds for animation to run, THEN start heavy work
+            print("[ContentView] Step 4: Scheduling LiDAR init after 0.7s delay...")
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.7) { [self] in
+                print("[ContentView] Step 5: 0.7s passed, starting LiDAR initialization...")
                 
-                // Small additional delay for hardware
-                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-                
-                await MainActor.run {
-                    if depthManager.isDepthSupported {
-                        depthManager.bandStep = bandStep
-                        depthManager.startSession()
-                        
-                        // Hide transition after 1.5 seconds
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
-                            withAnimation(.easeOut(duration: 0.3)) {
-                                showEdgeTransition = false
+                // Do heavy work on background thread
+                Task.detached(priority: .userInitiated) {
+                    print("[ContentView] Step 6: Entering background task for camera pause...")
+                    
+                    await MainActor.run {
+                        print("[ContentView] Step 7: Pausing camera session...")
+                        cameraManager.pauseSession()
+                        print("[ContentView] Step 7b: Camera paused")
+                    }
+                    
+                    // Wait for hardware release
+                    print("[ContentView] Step 8: Waiting 150ms for hardware...")
+                    try? await Task.sleep(nanoseconds: 150_000_000) // 150ms
+                    print("[ContentView] Step 8b: Hardware delay complete")
+                    
+                    await MainActor.run {
+                        print("[ContentView] Step 9: Starting LiDAR session...")
+                        if depthManager.isDepthSupported {
+                            depthManager.bandStep = bandStep
+                            depthManager.startSession()
+                            print("[ContentView] Step 9b: LiDAR session started")
+                            
+                            // Hide transition after remaining 0.8 seconds (total 1.5s)
+                            print("[ContentView] Step 10: Scheduling transition hide in 0.8s...")
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+                                print("[ContentView] Step 11: Hiding edge transition")
+                                withAnimation(.easeOut(duration: 0.3)) {
+                                    showEdgeTransition = false
+                                }
+                                transitionSnapshot = nil
+                                print("[ContentView] ===== LIDAR MODE ACTIVE =====")
                             }
+                        } else {
+                            print("[ContentView] ERROR: Depth not supported!")
+                            showDepthError = true
+                            showEdgeTransition = false
                             transitionSnapshot = nil
-                        }
-                    } else {
-                        showDepthError = true
-                        showEdgeTransition = false
-                        transitionSnapshot = nil
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                            showDepthError = false
-                            withAnimation {
-                                selectedLens = oldLens
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                                showDepthError = false
+                                withAnimation {
+                                    selectedLens = oldLens
+                                }
                             }
                         }
                     }
