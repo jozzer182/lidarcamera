@@ -17,7 +17,7 @@ class DepthRenderer {
     var minRangeMeters: Float = 0.1
     
     /// Enable contour lines at band boundaries
-    var showContours: Bool = true
+    var showContours: Bool = false
     
     /// Contour line intensity (0-1)
     var contourIntensity: Float = 0.8
