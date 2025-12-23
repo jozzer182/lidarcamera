@@ -331,11 +331,11 @@ struct ContentView: View {
                     
                     // Flash (top-right)
                     miniFlashRing
-                        .offset(x: 18, y: -22)
+                        .offset(x: 18, y: -23)
                     
                     // LiDAR (bottom-right)
                     miniLidarRing
-                        .offset(x: 18, y: 28)
+                        .offset(x: 18, y: 23)
                 }
             }
             .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 8)
@@ -436,7 +436,7 @@ struct ContentView: View {
                     cameraManager.flashEnabled ? Color.yellow : .white.opacity(0.6),
                     lineWidth: 1.5
                 )
-                .frame(width: 14, height: 14)
+                .frame(width: 8, height: 8)
             
             if cameraManager.flashEnabled {
                 Circle()
@@ -452,7 +452,7 @@ struct ContentView: View {
         return ZStack {
             Circle()
                 .stroke(.white.opacity(0.5), lineWidth: 1)
-                .frame(width: 10, height: 10)
+                .frame(width: 8, height: 8)
             
             if isSelected {
                 Circle()
