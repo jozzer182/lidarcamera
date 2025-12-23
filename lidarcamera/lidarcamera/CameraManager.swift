@@ -27,7 +27,9 @@ class CameraManager: NSObject, ObservableObject {
     
     let session = AVCaptureSession()
     private let photoOutput = AVCapturePhotoOutput()
+    private let videoDataOutput = AVCaptureVideoDataOutput() // For snapshot capture
     private var currentDeviceInput: AVCaptureDeviceInput?
+    private let videoOutputQueue = DispatchQueue(label: "camera.video.output.queue")
     private let sessionQueue = DispatchQueue(label: "camera.session.queue")
     
     // MARK: - Initialization
@@ -85,6 +87,20 @@ class CameraManager: NSObject, ObservableObject {
             if self.session.canAddOutput(self.photoOutput) {
                 self.session.addOutput(self.photoOutput)
                 self.photoOutput.isHighResolutionCaptureEnabled = true
+            }
+            
+            // Add video data output for snapshot capture
+            self.videoDataOutput.setSampleBufferDelegate(self, queue: self.videoOutputQueue)
+            self.videoDataOutput.videoSettings = [
+                kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA
+            ]
+            self.videoDataOutput.alwaysDiscardsLateVideoFrames = true
+            
+            if self.session.canAddOutput(self.videoDataOutput) {
+                self.session.addOutput(self.videoDataOutput)
+                print("[CameraManager] ✅ VideoDataOutput added for snapshot capture")
+            } else {
+                print("[CameraManager] ❌ Failed to add VideoDataOutput")
             }
             
             self.session.commitConfiguration()
@@ -342,6 +358,29 @@ extension CameraManager: AVCapturePhotoCaptureDelegate {
             @unknown default:
                 break
             }
+        }
+    }
+}
+
+// MARK: - AVCaptureVideoDataOutputSampleBufferDelegate
+
+extension CameraManager: AVCaptureVideoDataOutputSampleBufferDelegate {
+    
+    nonisolated func captureOutput(_ output: AVCaptureOutput, didOutput sampleBuffer: CMSampleBuffer, from connection: AVCaptureConnection) {
+        
+        // Get pixel buffer from sample buffer
+        guard let pixelBuffer = CMSampleBufferGetImageBuffer(sampleBuffer) else { return }
+        
+        // Create CIImage from pixel buffer
+        let ciImage = CIImage(cvPixelBuffer: pixelBuffer)
+        
+        // Create CGImage with proper color space
+        let context = CIContext(options: nil)
+        guard let cgImage = context.createCGImage(ciImage, from: ciImage.extent) else { return }
+        
+        // Update snapshot on main thread
+        Task { @MainActor [weak self] in
+            self?.lastFrameSnapshot = cgImage
         }
     }
 }
