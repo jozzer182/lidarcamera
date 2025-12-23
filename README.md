@@ -96,7 +96,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/YOUR_USERNAME/lidarcamera.git
+git clone https://github.com/jozzer182/lidarcamera.git
 
 # Open in Xcode
 cd lidarcamera/lidarcamera
