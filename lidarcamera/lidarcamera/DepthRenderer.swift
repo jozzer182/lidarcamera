@@ -147,8 +147,8 @@ class DepthRenderer {
                 // Normalized: 0 = near (red), 1 = far (blue)
                 let normalizedDepth = (quantizedDepth - minRangeMeters) / (maxRangeMeters - minRangeMeters)
                 
-                // Color gradient: Red → Orange → Yellow → Green → Cyan → Blue
-                let (r, g, b) = heatmapColor(normalizedDepth: normalizedDepth)
+                // HSL color: Hue varies 0°-240° (red→blue)
+                let (r, g, b) = hslColor(normalizedDepth: normalizedDepth)
                 
                 outputPixels[outputIndex] = r
                 outputPixels[outputIndex + 1] = g
@@ -163,45 +163,54 @@ class DepthRenderer {
         return createRGBCGImage(from: outputPixels, width: width, height: height)
     }
     
-    /// Generate heatmap color: near (0) = red/warm, far (1) = blue/cold
-    private func heatmapColor(normalizedDepth: Float) -> (UInt8, UInt8, UInt8) {
+    /// Generate color from depth using HSL: only Hue varies (0°=red/near → 360°=magenta/far)
+    /// S=1.0, L=0.5 for vibrant colors
+    private func hslColor(normalizedDepth: Float) -> (UInt8, UInt8, UInt8) {
         let t = max(0, min(1, normalizedDepth))
         
-        var r: Float = 0
-        var g: Float = 0
-        var b: Float = 0
+        // Hue: 0 (red) → 240 (blue) for near→far
+        // Using 0-240 range to go from red through yellow, green, cyan to blue
+        let hue = t * 240.0 // 0° to 240°
+        let saturation: Float = 1.0
+        let lightness: Float = 0.5
         
-        if t < 0.25 {
-            // Red → Orange (0.0 - 0.25)
-            let localT = t / 0.25
-            r = 1.0
-            g = localT * 0.5
-            b = 0
-        } else if t < 0.5 {
-            // Orange → Yellow → Green (0.25 - 0.5)
-            let localT = (t - 0.25) / 0.25
-            r = 1.0 - localT * 0.5
-            g = 0.5 + localT * 0.5
-            b = 0
-        } else if t < 0.75 {
-            // Green → Cyan (0.5 - 0.75)
-            let localT = (t - 0.5) / 0.25
-            r = 0.5 - localT * 0.5
-            g = 1.0 - localT * 0.3
-            b = localT * 0.7
-        } else {
-            // Cyan → Blue → Dark Blue (0.75 - 1.0)
-            let localT = (t - 0.75) / 0.25
-            r = 0
-            g = 0.7 - localT * 0.7
-            b = 0.7 + localT * 0.3
-        }
+        // Convert HSL to RGB
+        let (r, g, b) = hslToRGB(h: hue, s: saturation, l: lightness)
         
         return (
             UInt8(max(0, min(255, r * 255))),
             UInt8(max(0, min(255, g * 255))),
             UInt8(max(0, min(255, b * 255)))
         )
+    }
+    
+    /// Convert HSL to RGB
+    /// h: 0-360, s: 0-1, l: 0-1
+    private func hslToRGB(h: Float, s: Float, l: Float) -> (Float, Float, Float) {
+        let c = (1 - abs(2 * l - 1)) * s // Chroma
+        let hPrime = h / 60.0
+        let x = c * (1 - abs(hPrime.truncatingRemainder(dividingBy: 2) - 1))
+        
+        var r: Float = 0
+        var g: Float = 0
+        var b: Float = 0
+        
+        if hPrime < 1 {
+            r = c; g = x; b = 0
+        } else if hPrime < 2 {
+            r = x; g = c; b = 0
+        } else if hPrime < 3 {
+            r = 0; g = c; b = x
+        } else if hPrime < 4 {
+            r = 0; g = x; b = c
+        } else if hPrime < 5 {
+            r = x; g = 0; b = c
+        } else {
+            r = c; g = 0; b = x
+        }
+        
+        let m = l - c / 2
+        return (r + m, g + m, b + m)
     }
     
     // MARK: - Contour Lines
