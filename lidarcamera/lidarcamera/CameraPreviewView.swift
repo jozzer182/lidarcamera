@@ -59,17 +59,22 @@ struct CameraPreviewView: UIViewRepresentable {
         override func didMoveToWindow() {
             super.didMoveToWindow()
             if window != nil {
+                print("[CameraPreviewView] 🟢 View added to window, starting snapshot timer")
                 startSnapshotCapture()
             } else {
+                print("[CameraPreviewView] 🔴 View removed from window, stopping timer")
                 stopSnapshotCapture()
             }
         }
         
         private func startSnapshotCapture() {
+            print("[CameraPreviewView] ⏱️ Starting snapshot timer (every 0.5s)")
             // Capture snapshot every 0.5 seconds for transition effect
             snapshotTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { [weak self] _ in
                 self?.captureSnapshot()
             }
+            // Also capture first snapshot immediately
+            captureSnapshot()
         }
         
         private func stopSnapshotCapture() {
