@@ -299,22 +299,6 @@ struct ContentView: View {
             }
         } label: {
             ZStack {
-                // Liquid Glass background
-                RoundedRectangle(cornerRadius: 20)
-                    .fill(.ultraThinMaterial)
-                    .frame(width: 100, height: 100)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 20)
-                            .stroke(
-                                LinearGradient(
-                                    colors: [.white.opacity(0.5), .white.opacity(0.1)],
-                                    startPoint: .topLeading,
-                                    endPoint: .bottomTrailing
-                                ),
-                                lineWidth: 1
-                            )
-                    )
-                
                 // Camera lenses arrangement (contours only)
                 ZStack {
                     // Ultra Wide (top-left)
@@ -338,7 +322,8 @@ struct ContentView: View {
                         .offset(x: 18, y: 23)
                 }
             }
-            .shadow(color: .black.opacity(0.25), radius: 15, x: 0, y: 8)
+            .frame(width: 100, height: 100)
+            .glassEffect(.regular, in: .rect(cornerRadius: 20))
         }
     }
     
@@ -350,19 +335,6 @@ struct ContentView: View {
         let lensRadius: CGFloat = 41 // ~41px outer radius for big lenses
         
         return ZStack {
-            // Liquid Glass background - rounded square frame
-            RoundedRectangle(cornerRadius: 36)
-                .fill(.ultraThinMaterial)
-                .frame(width: frameSize, height: frameSize)
-                .overlay(
-                    RoundedRectangle(cornerRadius: 36)
-                        .fill(Color.blue.opacity(0.05))
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: 36)
-                        .stroke(.white.opacity(0.4), lineWidth: 2)
-                )
-            
             // Camera lenses arrangement per spec:
             // - Two lenses stacked on LEFT (aligned with right lens to form centered group)
             // - One lens on RIGHT centered vertically
@@ -389,7 +361,8 @@ struct ContentView: View {
                 
             }
         }
-        .shadow(color: .black.opacity(0.25), radius: 20, x: 0, y: 10)
+        .frame(width: frameSize, height: frameSize)
+        .glassEffect(.regular, in: .rect(cornerRadius: 36))
     }
     
     // MARK: - Mini Lens Ring (Collapsed - Contours)

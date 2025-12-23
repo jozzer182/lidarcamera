@@ -7,7 +7,7 @@
 
 import SwiftUI
 
-/// Lightweight toast view for displaying messages
+/// Lightweight toast view for displaying messages with Liquid Glass
 struct ToastView: View {
     let message: String
     
@@ -15,18 +15,10 @@ struct ToastView: View {
         Text(message)
             .font(.subheadline)
             .fontWeight(.medium)
-            .foregroundStyle(.white)
+            .foregroundStyle(.primary)
             .padding(.horizontal, 20)
             .padding(.vertical, 12)
-            .background(
-                Capsule()
-                    .fill(.ultraThinMaterial)
-                    .overlay(
-                        Capsule()
-                            .fill(Color.black.opacity(0.5))
-                    )
-            )
-            .shadow(color: .black.opacity(0.2), radius: 10, x: 0, y: 5)
+            .glassEffect(.regular, in: .capsule)
     }
 }
 

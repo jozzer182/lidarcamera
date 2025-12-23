@@ -6,36 +6,30 @@ struct DepthToggles: View {
     @Binding var showContours: Bool
     
     var body: some View {
-        HStack(spacing: 16) {
-            // Color mode toggle
-            TogglePill(
-                isOn: $useColorMode,
-                icon: useColorMode ? "paintpalette.fill" : "circle.lefthalf.filled",
-                label: useColorMode ? "Color" : "B/W"
-            )
-            
-            // Contour toggle
-            TogglePill(
-                isOn: $showContours,
-                icon: showContours ? "square.stack.3d.up.fill" : "square.stack.3d.up",
-                label: "Contours"
-            )
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .background(
-            Capsule()
-                .fill(.ultraThinMaterial)
-                .overlay(
-                    Capsule()
-                        .stroke(.white.opacity(0.2), lineWidth: 1)
+        GlassEffectContainer {
+            HStack(spacing: 12) {
+                // Color mode toggle
+                TogglePill(
+                    isOn: $useColorMode,
+                    icon: useColorMode ? "paintpalette.fill" : "circle.lefthalf.filled",
+                    label: useColorMode ? "Color" : "B/W"
                 )
-        )
-        .shadow(color: .black.opacity(0.2), radius: 8, y: 4)
+                
+                // Contour toggle
+                TogglePill(
+                    isOn: $showContours,
+                    icon: showContours ? "square.stack.3d.up.fill" : "square.stack.3d.up",
+                    label: "Contours"
+                )
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+        }
+        .glassEffect(.regular, in: .capsule)
     }
 }
 
-/// Individual toggle pill button
+/// Individual toggle pill button with Liquid Glass
 struct TogglePill: View {
     @Binding var isOn: Bool
     let icon: String
@@ -54,19 +48,12 @@ struct TogglePill: View {
                 Text(label)
                     .font(.system(size: 11, weight: .medium))
             }
-            .foregroundStyle(isOn ? .blue : .white.opacity(0.7))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(
-                Capsule()
-                    .fill(isOn ? Color.blue.opacity(0.2) : .clear)
-                    .overlay(
-                        Capsule()
-                            .stroke(isOn ? Color.blue.opacity(0.5) : .white.opacity(0.3), lineWidth: 1)
-                    )
-            )
+            .foregroundStyle(isOn ? Color.accentColor : Color.white.opacity(0.7))
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
         }
         .buttonStyle(.plain)
+        .glassEffect(isOn ? .regular.tint(.accentColor) : .clear, in: .capsule)
     }
 }
 
