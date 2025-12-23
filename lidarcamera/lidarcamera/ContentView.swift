@@ -180,24 +180,33 @@ struct ContentView: View {
                 print("[ContentView] WARNING: No snapshot available!")
             }
             
-            // Wait 0.5 seconds, then start LiDAR
+            // Wait 0.5 seconds to show B/W image, then start LiDAR
+            print("[ContentView] Step 4: Scheduling LiDAR init in 0.5s...")
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.5) { [self] in
+                print("[ContentView] Step 5: 0.5s passed, starting LiDAR...")
+                
                 // Pause camera and start LiDAR on background thread
                 Task.detached(priority: .userInitiated) {
                     await MainActor.run {
+                        print("[ContentView] Step 6: Pausing camera...")
                         cameraManager.pauseSession()
                     }
                     
                     try? await Task.sleep(nanoseconds: 100_000_000) // 100ms hardware delay
                     
                     await MainActor.run {
+                        print("[ContentView] Step 7: Starting LiDAR session...")
                         if depthManager.isDepthSupported {
                             depthManager.bandStep = bandStep
                             depthManager.startSession()
+                            print("[ContentView] Step 8: LiDAR started, transition will hide in 1s")
                             
-                            // Hide transition immediately
-                            showEdgeTransition = false
-                            transitionSnapshot = nil
+                            // Keep showing B/W image for 1 more second so user can see it
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 1.0) {
+                                print("[ContentView] Step 9: Hiding transition NOW")
+                                showEdgeTransition = false
+                                transitionSnapshot = nil
+                            }
                         } else {
                             showDepthError = true
                             showEdgeTransition = false
