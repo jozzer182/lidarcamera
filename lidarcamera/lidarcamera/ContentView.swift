@@ -136,27 +136,40 @@ struct ContentView: View {
         let isNowLiDAR = newLens == .lidar
         
         if isNowLiDAR && !wasLiDAR {
-            // Switching TO LiDAR mode
-            cameraManager.pauseSession()
-            
-            if depthManager.isDepthSupported {
-                depthManager.bandStep = bandStep
-                depthManager.startSession()
-            } else {
-                showDepthError = true
-                DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
-                    showDepthError = false
-                    // Revert to previous lens
-                    withAnimation {
-                        selectedLens = oldLens
+            // Switching TO LiDAR mode - do this on background to avoid blocking main
+            Task.detached(priority: .userInitiated) {
+                await MainActor.run {
+                    // Pause camera synchronously
+                    cameraManager.pauseSession()
+                }
+                
+                // Small additional delay for hardware
+                try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
+                
+                await MainActor.run {
+                    if depthManager.isDepthSupported {
+                        depthManager.bandStep = bandStep
+                        depthManager.startSession()
+                    } else {
+                        showDepthError = true
+                        DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                            showDepthError = false
+                            withAnimation {
+                                selectedLens = oldLens
+                            }
+                        }
                     }
                 }
             }
         } else if !isNowLiDAR && wasLiDAR {
             // Switching FROM LiDAR mode to camera
             depthManager.pauseSession()
-            cameraManager.resumeSession()
-            cameraManager.switchLens(to: newLens)
+            
+            // Small delay before resuming camera
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                cameraManager.resumeSession()
+                cameraManager.switchLens(to: newLens)
+            }
         } else if !isNowLiDAR {
             // Normal lens switch (camera modes)
             cameraManager.switchLens(to: newLens)

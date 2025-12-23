@@ -93,13 +93,17 @@ class CameraManager: NSObject, ObservableObject {
     
     // MARK: - Session Control (for mode switching)
     
-    /// Pause camera session (when switching to LiDAR mode)
+    /// Pause camera session synchronously (when switching to LiDAR mode)
+    /// Uses semaphore to ensure camera is fully stopped before returning
     func pauseSession() {
+        let semaphore = DispatchSemaphore(value: 0)
+        
         sessionQueue.async { [weak self] in
-            guard let self = self else { return }
-            if self.session.isRunning {
-                self.session.stopRunning()
+            guard let self = self else {
+                semaphore.signal()
+                return
             }
+            
             // Turn off torch if on
             if let device = self.currentDeviceInput?.device,
                device.hasTorch && device.torchMode == .on {
@@ -111,7 +115,20 @@ class CameraManager: NSObject, ObservableObject {
                     print("Error turning off torch: \(error)")
                 }
             }
+            
+            // Stop session
+            if self.session.isRunning {
+                self.session.stopRunning()
+            }
+            
+            // Small delay to ensure hardware is released
+            Thread.sleep(forTimeInterval: 0.1)
+            
+            semaphore.signal()
         }
+        
+        // Wait for session to fully stop (max 2 seconds)
+        _ = semaphore.wait(timeout: .now() + 2.0)
         flashEnabled = false
     }
     
@@ -119,6 +136,10 @@ class CameraManager: NSObject, ObservableObject {
     func resumeSession() {
         sessionQueue.async { [weak self] in
             guard let self = self else { return }
+            
+            // Small delay before restarting
+            Thread.sleep(forTimeInterval: 0.1)
+            
             if !self.session.isRunning {
                 self.session.startRunning()
             }

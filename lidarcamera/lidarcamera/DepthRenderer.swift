@@ -127,8 +127,10 @@ class DepthRenderer {
                 }
                 
                 if isEdge {
-                    // Draw contour (bright line)
-                    pixels[idx] = min(255, pixels[idx] + contourValue / 2)
+                    // Draw contour (bright line) - use safe arithmetic to avoid overflow
+                    let currentValue = Int(pixels[idx])
+                    let addValue = Int(contourValue) / 2
+                    pixels[idx] = UInt8(min(255, currentValue + addValue))
                 }
             }
         }
