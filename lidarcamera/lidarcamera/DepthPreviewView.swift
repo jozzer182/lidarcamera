@@ -18,8 +18,7 @@ struct DepthPreviewView: View {
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geometry.size.width, height: geometry.size.height)
                         .clipped()
-                        .rotationEffect(.degrees(90)) // Adjust for landscape depth buffer
-                        .scaleEffect(x: -1, y: 1) // Mirror for front-facing consistency
+                        .rotationEffect(.degrees(90)) // Adjust for landscape depth buffer (256x192)
                 } else if depthManager.isRunning {
                     // Loading indicator
                     ProgressView()
