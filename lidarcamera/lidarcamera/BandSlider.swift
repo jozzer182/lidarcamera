@@ -4,77 +4,81 @@ import SwiftUI
 struct BandSlider: View {
     @Binding var value: Float
     
-    /// Minimum step (fine detail)
+    /// Minimum step (fine detail) - at TOP
     let minStep: Float = 0.01
-    /// Maximum step (coarse)
+    /// Maximum step (coarse) - at BOTTOM
     let maxStep: Float = 0.20
     
     @State private var isDragging = false
+    @GestureState private var dragOffset: CGFloat = 0
     
     private let sliderHeight: CGFloat = 200
-    private let trackWidth: CGFloat = 6
-    private let thumbSize: CGFloat = 24
+    private let trackWidth: CGFloat = 8
+    private let thumbSize: CGFloat = 28
     
     var body: some View {
         VStack(spacing: 8) {
-            // Fine label
+            // Fine label (TOP = smaller values)
             Text("Fine")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
             
             // Slider track
-            GeometryReader { geometry in
-                ZStack(alignment: .bottom) {
-                    // Track background (Liquid Glass)
-                    Capsule()
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Capsule()
-                                .stroke(.white.opacity(0.3), lineWidth: 1)
-                        )
-                        .frame(width: trackWidth)
-                    
-                    // Active fill
+            ZStack(alignment: .top) {
+                // Track background (Liquid Glass)
+                Capsule()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Capsule()
+                            .stroke(.white.opacity(0.3), lineWidth: 1)
+                    )
+                    .frame(width: trackWidth, height: sliderHeight)
+                
+                // Active fill from top
+                VStack {
                     Capsule()
                         .fill(
                             LinearGradient(
                                 colors: [.blue.opacity(0.6), .blue.opacity(0.3)],
-                                startPoint: .bottom,
-                                endPoint: .top
+                                startPoint: .top,
+                                endPoint: .bottom
                             )
                         )
-                        .frame(width: trackWidth, height: thumbPosition(in: geometry.size.height))
-                    
-                    // Thumb
-                    Circle()
-                        .fill(.ultraThinMaterial)
-                        .overlay(
-                            Circle()
-                                .fill(isDragging ? Color.blue.opacity(0.5) : .white.opacity(0.2))
-                        )
-                        .overlay(
-                            Circle()
-                                .stroke(isDragging ? Color.blue : .white.opacity(0.5), lineWidth: 2)
-                        )
-                        .frame(width: thumbSize, height: thumbSize)
-                        .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
-                        .offset(y: -thumbPosition(in: geometry.size.height) + thumbSize / 2)
-                        .gesture(
-                            DragGesture(minimumDistance: 0)
-                                .onChanged { gesture in
-                                    isDragging = true
-                                    updateValue(from: gesture.location.y, in: geometry.size.height)
-                                }
-                                .onEnded { _ in
-                                    isDragging = false
-                                }
-                        )
+                        .frame(width: trackWidth, height: currentThumbY + thumbSize / 2)
+                    Spacer()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+                .frame(height: sliderHeight)
+                
+                // Thumb
+                Circle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(
+                        Circle()
+                            .fill(isDragging ? Color.blue.opacity(0.5) : .white.opacity(0.3))
+                    )
+                    .overlay(
+                        Circle()
+                            .stroke(isDragging ? Color.blue : .white.opacity(0.6), lineWidth: 2)
+                    )
+                    .frame(width: thumbSize, height: thumbSize)
+                    .shadow(color: .black.opacity(0.3), radius: 4, y: 2)
+                    .offset(y: currentThumbY)
             }
             .frame(width: thumbSize + 10, height: sliderHeight)
+            .contentShape(Rectangle())
+            .gesture(
+                DragGesture(minimumDistance: 0)
+                    .onChanged { gesture in
+                        isDragging = true
+                        let y = gesture.location.y
+                        updateValueFromY(y)
+                    }
+                    .onEnded { _ in
+                        isDragging = false
+                    }
+            )
             
-            // Coarse label
+            // Coarse label (BOTTOM = larger values)
             Text("Coarse")
                 .font(.system(size: 10, weight: .medium))
                 .foregroundStyle(.white.opacity(0.6))
@@ -107,22 +111,29 @@ struct BandSlider: View {
         .shadow(color: .black.opacity(0.25), radius: 10, y: 4)
     }
     
-    // MARK: - Helper Methods
+    // MARK: - Computed Properties
     
-    private func thumbPosition(in height: CGFloat) -> CGFloat {
-        let normalizedValue = (value - minStep) / (maxStep - minStep)
-        // Inverted: top = fine (low value), bottom = coarse (high value)
-        let invertedValue = 1.0 - normalizedValue
-        return CGFloat(invertedValue) * (height - thumbSize) + thumbSize / 2
+    /// Calculate thumb Y position from current value
+    /// TOP (y=0) = minStep (fine), BOTTOM (y=max) = maxStep (coarse)
+    private var currentThumbY: CGFloat {
+        let normalizedValue = CGFloat((value - minStep) / (maxStep - minStep))
+        let usableHeight = sliderHeight - thumbSize
+        return normalizedValue * usableHeight
     }
     
-    private func updateValue(from y: CGFloat, in height: CGFloat) {
-        let usableHeight = height - thumbSize
-        let clampedY = max(thumbSize / 2, min(y, height - thumbSize / 2))
-        let normalizedY = (clampedY - thumbSize / 2) / usableHeight
-        // Inverted mapping
-        let invertedValue = 1.0 - normalizedY
-        value = minStep + Float(invertedValue) * (maxStep - minStep)
+    // MARK: - Methods
+    
+    /// Update value from Y position in gesture
+    private func updateValueFromY(_ y: CGFloat) {
+        let usableHeight = sliderHeight - thumbSize
+        let clampedY = max(0, min(y - thumbSize / 2, usableHeight))
+        let normalizedY = clampedY / usableHeight
+        
+        // TOP = fine (minStep), BOTTOM = coarse (maxStep)
+        value = minStep + Float(normalizedY) * (maxStep - minStep)
+        
+        // Clamp value to range
+        value = max(minStep, min(value, maxStep))
     }
 }
 
