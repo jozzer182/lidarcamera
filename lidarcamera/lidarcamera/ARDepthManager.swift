@@ -127,9 +127,12 @@ class ARDepthManager: NSObject, ObservableObject {
     }
     
     /// Capture current depth visualization as image for saving
+    /// Note: ARKit depth map is captured in landscape orientation.
+    /// We rotate 90° clockwise to match portrait display orientation.
     func captureDepthSnapshot() -> UIImage? {
         guard let cgImage = depthImage else { return nil }
-        return UIImage(cgImage: cgImage)
+        // Apply portrait orientation (rotate 90° clockwise from landscape)
+        return UIImage(cgImage: cgImage, scale: 1.0, orientation: .right)
     }
 }
 

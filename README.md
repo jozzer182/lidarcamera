@@ -1,6 +1,6 @@
 <div align="center">
   
-# 📸 LiDAR Camera
+# 📸 LidCam Pro
   
 <img src="https://img.shields.io/badge/iOS-26.0+-007AFF?style=for-the-badge&logo=apple&logoColor=white" alt="iOS 26+"/>
 <img src="https://img.shields.io/badge/Swift-5.9-FA7343?style=for-the-badge&logo=swift&logoColor=white" alt="Swift 5.9"/>
@@ -182,8 +182,8 @@ lidarcamera/
 The app requires the following permissions:
 
 ```
-NSCameraUsageDescription — "LiDAR Camera needs camera access to capture photos"
-NSPhotoLibraryAddUsageDescription — "LiDAR Camera needs permission to save photos"
+NSCameraUsageDescription — "LidCam Pro needs camera access to capture photos"
+NSPhotoLibraryAddUsageDescription — "LidCam Pro needs permission to save photos"
 ```
 
 ---
